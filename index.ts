@@ -1,11 +1,12 @@
 import { spawn } from "child_process";
-import { getInput, setFailed } from "@actions/core";
+import { getInput, setFailed, debug, startGroup, endGroup } from "@actions/core";
 import { hostname, platform } from "os";
 import { PowerShellSSHClient } from "./PowerShellSshClient";
 
 async function main() {
   // https://stackoverflow.com/questions/8683895/how-do-i-determine-the-current-operating-system-with-node-js
-
+  
+  startGroup("Hyper-V action general information");
   console.log(`Starting the HyperV action on Hyper-V host ${hostname} using the plattform ${platform()}`);
   var isSshModeEnabledString = getInput("SSHMode", { required: false, trimWhitespace: true });
   var isSshModeEnabled = getBoolean(isSshModeEnabledString);
@@ -36,15 +37,10 @@ async function executeInPowerShellRemoteMode() {
     // https://www.freecodecamp.org/news/node-js-child-processes-everything-you-need-to-know-e69498fe970a/
     // https://nodejs.org/api/child_process.html
     // https://2ality.com/2018/05/child-process-streams.html
-    // https://www.npmjs.com/package/@rauschma/stringio
-    //var childProcess = execSync("write-host $env:path; get-vm", {
-    //  shell: "powershell.exe",
-    //});
-    //console.log(childProcess.toLocaleString());
     var hyperVCmd = String.prototype.concat(".\\ps\\HyperVServer.ps1");
     hyperVCmd += String.prototype.concat(createHyperVScriptCommand());
-
-    const pwshHyperV = spawn("powershell.exe", [hyperVCmd], {
+    endGroup();
+    const pwshHyperV = spawn(getPwsh(), [hyperVCmd], {
       stdio: "inherit",
     });
 
@@ -156,6 +152,7 @@ function createHyperVScriptCommand() {
   hyperVCmd += String.prototype.concat(" ", "-Action", " ", action);
   hyperVCmd += String.prototype.concat(" ", "-VMName", " ", vmName);
   hyperVCmd += String.prototype.concat(optionalParameters);
+  debug("### HyperV command script parameter: " + hyperVCmd);
   return hyperVCmd;
 }
 
@@ -180,7 +177,7 @@ async function executeInSSHMode() {
       port: sshPort,
       username: sshUsername,
       password: sshPassword,
-    });
+    }, getPwsh());
   }
   else {
     console.log("### Connecting via SSH with private key");
@@ -193,12 +190,11 @@ async function executeInSSHMode() {
   }
 
   var scriptArguments = createHyperVScriptCommand();
-  console.log("### Script arguments: " + scriptArguments);
+  endGroup();
   try {
     var result = await ssh.executeScript('./ps/HyperVServer.ps1', scriptArguments);
     result = result.trim();
-    //only used for testing
-    //console.log("### Result: " + result);
+    debug("### Result: " + result);
     console.log("### Done");
   }
   catch (error) {
@@ -210,7 +206,6 @@ async function executeInSSHMode() {
     }
   }
 }
-
 
 //source: https://stackoverflow.com/questions/1812245/what-is-the-best-way-to-test-for-an-empty-string-with-jquery-out-of-the-box
 function isEmpty(value: string | null): boolean {
@@ -233,6 +228,16 @@ function getBoolean(value: any): boolean {
       return true;
     default:
       return false;
+  }
+}
+
+function getPwsh(): string {
+  var pwshCore = getBoolean("pwshcore");
+  if (pwshCore) {
+    return "pwsh";
+  }
+  else {
+    return "powershell.exe";
   }
 }
 
